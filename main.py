@@ -23,6 +23,7 @@ driver = webdriver.Chrome(
 
 LIMIT_BY_TRANSFER_COUNT = 300
 UNHIDE_SMALL_TRANSACTIONS = True
+MIN_TRANSFER_AMOUNT = 0.0001
 
 
 class Transfer:
@@ -177,15 +178,17 @@ try:
                 age = get_age(row)
                 is_outgoing = get_is_outgoing(row)
 
-                transfer = Transfer(
-                    address_parent=address_parent,
-                    address_from=address_from,
-                    address_to=address_to,
-                    amount=amount,
-                    age=age,
-                    is_outgoing=is_outgoing,
-                )
-                transfers.append(transfer)
+                if amount >= MIN_TRANSFER_AMOUNT:
+                    # only include transfers larger than the limit
+                    transfer = Transfer(
+                        address_parent=address_parent,
+                        address_from=address_from,
+                        address_to=address_to,
+                        amount=amount,
+                        age=age,
+                        is_outgoing=is_outgoing,
+                    )
+                    transfers.append(transfer)
 
             # TODO: next page if exists
 
