@@ -1,9 +1,9 @@
 import logging
 
 import pandas as pd
+from time import sleep
 
 from typing import List
-from bs4 import BeautifulSoup
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -22,6 +22,7 @@ driver = webdriver.Chrome(
 )
 
 LIMIT_BY_TRANSFER_COUNT = 300
+UNHIDE_SMALL_TRANSACTIONS = True
 
 
 class Transfer:
@@ -60,11 +61,17 @@ def get_transfers_url(address: str) -> str:
 
 def get_address_from(content: str) -> str:
     address = (
-        content.find("td", {"class": "from_address"})
-        .find("div", {"class": "ellipsis_box_start"})
+        content.find_element(
+            By.XPATH,
+            "//td[@class='ant-table-cell ant_table address_max_width from_address']",
+        )
+        .find_element(By.XPATH, "//div[@class='ellipsis_box_start']")
         .text
-        + content.find("td", {"class": "from_address"})
-        .find("div", {"class": "ellipsis_box_end"})
+        + content.find_element(
+            By.XPATH,
+            "//td[@class='ant-table-cell ant_table address_max_width from_address']",
+        )
+        .find_element(By.XPATH, "//div[@class='ellipsis_box_end']")
         .text
     )
     return address
@@ -72,30 +79,41 @@ def get_address_from(content: str) -> str:
 
 def get_address_to(content: str) -> str:
     address = (
-        content.find("td", {"class": "to_address"})
-        .find("div", {"class": "ellipsis_box_start"})
+        content.find_element(
+            By.XPATH,
+            "//td[@class='ant-table-cell ant_table address_max_width to_address']",
+        )
+        .find_element(By.XPATH, "//div[@class='ellipsis_box_start']")
         .text
-        + content.find("td", {"class": "to_address"})
-        .find("div", {"class": "ellipsis_box_end"})
+        + content.find_element(
+            By.XPATH,
+            "//td[@class='ant-table-cell ant_table address_max_width to_address']",
+        )
+        .find_element(By.XPATH, "//div[@class='ellipsis_box_end']")
         .text
     )
     return address
 
 
 def get_amount(content: str) -> float:
-    amount = float(content.find("span", {"class": "text-truncate token-amount"}).text)
+    amount = float(
+        content.find_element(
+            By.XPATH, "//span[@class='text-truncate token-amount']"
+        ).text
+    )
     return amount
 
 
 def get_age(content: str) -> str:
-    age = content.find("div", {"class": ["token_black", "table_pos"]}).text
+    age = content.find_element(By.XPATH, "//div[@class='token_black table_pos']").text
     return age
 
 
 def get_is_outgoing(content: str) -> bool:
     is_outgoing = (
         False
-        if content.find("div", {"class": ["in-icon", "to-icon"]}).text == "In"
+        if content.find_element(By.XPATH, "//div[@class='in-icon to-icon']").text
+        == "In"
         else True
     )
     return is_outgoing
@@ -115,20 +133,41 @@ try:
         )
     )
 
-    # scrap info
-    soup = BeautifulSoup(driver.page_source)
+    # # scrap info
+    # soup = BeautifulSoup(driver.page_source)
+
+    # unhide small transfers
+    if UNHIDE_SMALL_TRANSACTIONS == True:
+        # check if the hide button has already been disabled
+        checked = driver.find_element(
+            By.XPATH,
+            "//button[@class='ant-switch ant-switch-small hiden-scam-switch tron-mr-8px ant-switch-checked']",
+        )
+        if checked:
+            # toggle the button
+            checked.click()
+            sleep(1)
+
+            # wait until page loads
+            WebDriverWait(driver, 60).until(
+                EC.presence_of_element_located(
+                    (By.CLASS_NAME, "ant-table-row.ant-table-row-level-0")
+                )
+            )
 
     # total number of transfers for this address
     total_transfers = int(
-        soup.find_all("div", {"class": "address-txn"})[0].find_all("span")[3].text
+        driver.find_element(By.XPATH, "//div[@class='address-txn tron-mr-4px']")
+        .find_element(By.XPATH, "//span[@class='color101010']")
+        .text
     )
 
     # include transacions if total transfers satisfies the limit
     if total_transfers < LIMIT_BY_TRANSFER_COUNT:
         if total_transfers > 0:
             # extract the currently available transfers in this page's table
-            rows = soup.find_all(
-                "tr", {"class": ["ant-table-row", "ant-table-row-level-0"]}
+            rows = driver.find_elements(
+                By.XPATH, "//tr[@class='ant-table-row ant-table-row-level-0']"
             )
             for row in rows:
                 address_parent = current_address
