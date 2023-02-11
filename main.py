@@ -96,15 +96,6 @@ def get_address_to(content: str) -> str:
     return address
 
 
-def get_amount(content: str) -> float:
-    amount = float(
-        content.find_element(
-            By.XPATH, "//span[@class='text-truncate token-amount']"
-        ).text
-    )
-    return amount
-
-
 def get_age(content: str) -> str:
     age = content.find_element(By.XPATH, "//div[@class='token_black table_pos']").text
     return age
@@ -120,6 +111,16 @@ def get_is_outgoing(content: str) -> bool:
     return is_outgoing
 
 
+def wait_untill_table_is_filled(driver):
+    WebDriverWait(driver, 60).until(
+        EC.presence_of_element_located(
+            (By.CLASS_NAME, "ant-table-row.ant-table-row-level-0")
+        )
+    )
+    sleep(3)
+    driver.implicitly_wait(3)
+
+
 transfers: List[Transfer] = []
 
 current_address = starting_address
@@ -127,12 +128,7 @@ url = get_transfers_url(starting_address)
 driver.get(url)
 
 try:
-    # wait until page loads
-    WebDriverWait(driver, 60).until(
-        EC.presence_of_element_located(
-            (By.CLASS_NAME, "ant-table-row.ant-table-row-level-0")
-        )
-    )
+    wait_untill_table_is_filled(driver)
 
     # # scrap info
     # soup = BeautifulSoup(driver.page_source)
@@ -147,14 +143,7 @@ try:
         if checked:
             # toggle the button
             checked.click()
-            sleep(1)
-
-            # wait until page loads
-            WebDriverWait(driver, 60).until(
-                EC.presence_of_element_located(
-                    (By.CLASS_NAME, "ant-table-row.ant-table-row-level-0")
-                )
-            )
+            wait_untill_table_is_filled(driver)
 
     # total number of transfers for this address
     total_transfers = int(
@@ -166,37 +155,69 @@ try:
     # include transacions if total transfers satisfies the limit
     if total_transfers < LIMIT_BY_TRANSFER_COUNT:
         if total_transfers > 0:
-            # extract the currently available transfers in this page's table
-            rows = driver.find_elements(
-                By.XPATH, "//tr[@class='ant-table-row ant-table-row-level-0']"
-            )
-            for row in rows:
-                address_parent = current_address
-                address_from = get_address_from(row)
-                address_to = get_address_to(row)
-                amount = get_amount(row)
-                age = get_age(row)
-                is_outgoing = get_is_outgoing(row)
+            current_page = 1
+            while True:
+                # extract the currently available transfers in this page's table
+                rows = driver.find_elements(
+                    By.XPATH, "//tr[@class='ant-table-row ant-table-row-level-0']"
+                )
+                for row in rows:
+                    address_parent = current_address
+                    address_from = get_address_from(row)
+                    address_to = get_address_to(row)
+                    amount = float(row.text.replace(",", "").split("\n")[3])
+                    age = get_age(row)
+                    is_outgoing = get_is_outgoing(row)
 
-                if amount >= MIN_TRANSFER_AMOUNT:
-                    # only include transfers larger than the limit
-                    transfer = Transfer(
-                        address_parent=address_parent,
-                        address_from=address_from,
-                        address_to=address_to,
-                        amount=amount,
-                        age=age,
-                        is_outgoing=is_outgoing,
+                    if abs(amount) >= MIN_TRANSFER_AMOUNT:
+                        # only include transfers larger than the limit
+                        transfer = Transfer(
+                            address_parent=address_parent,
+                            address_from=address_from,
+                            address_to=address_to,
+                            amount=abs(amount),
+                            age=age,
+                            is_outgoing=is_outgoing,
+                        )
+                        transfers.append(transfer)
+
+                # next page if exists
+                next_page_lable = driver.find_element(
+                    By.XPATH, "//li[@title='Next Page']"
+                )
+                if next_page_lable.get_attribute("aria-disabled") == "false":
+                    # there is a next page
+
+                    # next_page_button = driver.find_element(
+                    #     By.XPATH, "//button[@class='ant-pagination-item-link']"
+                    # )
+                    next_page_lable.click()
+                    current_page += 1
+                    # wait_untill_table_is_filled(driver)
+                    print(f"Flipping the page to page no {current_page}...")
+
+                    WebDriverWait(driver, 60).until(
+                        EC.presence_of_element_located(
+                            (
+                                By.XPATH,
+                                f"//li[@title='{current_page}' and @class='ant-pagination-item ant-pagination-item-{current_page} ant-pagination-item-active']",
+                            )
+                        )
                     )
-                    transfers.append(transfer)
 
-            # TODO: next page if exists
+                    sleep(3)
+                    driver.implicitly_wait(3)
+                    print("Page flipped.")
+
+                else:
+                    # there is no next page
+                    break
 
         else:
-            logging.warn(f"No transfers found for address <{current_address}>")
+            print(f"No transfers found for address <{current_address}>")
 
     else:
-        logging.warn(
+        print(
             f"Address <{current_address}> transfers <{total_transfers}>, exceeds the limit <{LIMIT_BY_TRANSFER_COUNT}>."
         )
 
