@@ -1,0 +1,4 @@
+coloredlogs
+pandas
+selenium
+webdriver_manager
