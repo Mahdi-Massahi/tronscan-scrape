@@ -20,7 +20,7 @@ options = Options()
 options.add_argument("start-maximized")
 options.add_experimental_option("detach", True)
 
-
+STARTING_ADDRESS = ""
 LIMIT_BY_TRANSFER_COUNT = 300
 UNHIDE_SMALL_TRANSACTIONS = True
 MIN_TRANSFER_AMOUNT = 0.0001
@@ -209,9 +209,7 @@ def get_rec_transfers(address: str, transfers: List[Transfer], depth=0):
 if __name__ == "__main__":
     final_set_of_transfers: List[Transfer] = []
 
-    starting_address = "TTVQUuYxDZCnFcmju8k8zNJEaBWiR1z6tM"  # input("Enter the starting tron address: ")
-
-    get_rec_transfers(address=starting_address, transfers=final_set_of_transfers)
+    get_rec_transfers(address=STARTING_ADDRESS, transfers=final_set_of_transfers)
 
     df = pd.DataFrame.from_records(
         [transfer.__dict__ for transfer in final_set_of_transfers]
