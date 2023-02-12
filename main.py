@@ -1,4 +1,6 @@
-import logging
+import coloredlogs, logging
+
+coloredlogs.install(level=logging.INFO)
 
 import pandas as pd
 from time import sleep
@@ -17,9 +19,7 @@ from selenium.webdriver.support import expected_conditions as EC
 options = Options()
 options.add_argument("start-maximized")
 options.add_experimental_option("detach", True)
-driver = webdriver.Chrome(
-    service=Service(ChromeDriverManager().install()), options=options
-)
+
 
 LIMIT_BY_TRANSFER_COUNT = 300
 UNHIDE_SMALL_TRANSACTIONS = True
@@ -57,6 +57,8 @@ def get_transfers_url(address: str) -> str:
 
 
 def wait_untill_table_is_filled(driver):
+    logging.info("Waiting for tables to get filled...")
+
     WebDriverWait(driver, 60).until(
         EC.presence_of_element_located(
             (By.CLASS_NAME, "ant-table-row.ant-table-row-level-0")
@@ -65,14 +67,22 @@ def wait_untill_table_is_filled(driver):
     sleep(3)
     driver.implicitly_wait(3)
 
+    logging.info("Table got filled.")
+
 
 def get_transfers(address: str) -> List[Transfer]:
-    transfers: List[Transfer] = []
+    logging.info(f"Getting transfers for <{address}>...")
 
-    current_address = address
-    url = get_transfers_url(starting_address)
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()), options=options
+    )
+
+    logging.info("Session created.")
+
+    url = get_transfers_url(address)
     driver.get(url)
 
+    transfers: List[Transfer] = []
     try:
         wait_untill_table_is_filled(driver)
 
@@ -84,6 +94,8 @@ def get_transfers(address: str) -> List[Transfer]:
                 "//button[@class='ant-switch ant-switch-small hiden-scam-switch tron-mr-8px ant-switch-checked']",
             )
             if checked:
+                logging.info("Enableing small transactions...")
+
                 # toggle the button
                 checked.click()
                 wait_untill_table_is_filled(driver)
@@ -94,6 +106,7 @@ def get_transfers(address: str) -> List[Transfer]:
             .find_element(By.XPATH, "//span[@class='color101010']")
             .text
         )
+        logging.info(f"Total transfers found for <{address}> is {total_transfers}.")
 
         # include transacions if total transfers satisfies the limit
         if total_transfers < LIMIT_BY_TRANSFER_COUNT:
@@ -105,7 +118,7 @@ def get_transfers(address: str) -> List[Transfer]:
                         By.XPATH, "//tr[@class='ant-table-row ant-table-row-level-0']"
                     )
                     for row in rows:
-                        address_parent = current_address
+                        address_parent = address
                         address_from = (
                             row.text.replace(",", "").split("\n")[6]
                             + row.text.replace(",", "").split("\n")[7]
@@ -136,14 +149,10 @@ def get_transfers(address: str) -> List[Transfer]:
                     )
                     if next_page_lable.get_attribute("aria-disabled") == "false":
                         # there is a next page
+                        logging.info("Switching to the next page...")
 
-                        # next_page_button = driver.find_element(
-                        #     By.XPATH, "//button[@class='ant-pagination-item-link']"
-                        # )
                         next_page_lable.click()
                         current_page += 1
-                        # wait_untill_table_is_filled(driver)
-                        print(f"Flipping the page to page no {current_page}...")
 
                         WebDriverWait(driver, 60).until(
                             EC.presence_of_element_located(
@@ -156,22 +165,24 @@ def get_transfers(address: str) -> List[Transfer]:
 
                         sleep(3)
                         driver.implicitly_wait(3)
-                        print("Page flipped.")
+                        logging.info(f"Switched to the next page ({current_page}).")
 
                     else:
                         # there is no next page
+                        logging.info(f"Reach to the ending page of this address.")
                         break
 
             else:
-                print(f"No transfers found for address <{current_address}>")
+                logging.warning(f"No transfers found for address <{address}>")
 
         else:
-            print(
-                f"Address <{current_address}> transfers <{total_transfers}>, exceeds the limit <{LIMIT_BY_TRANSFER_COUNT}>."
+            logging.warn(
+                f"Address <{address}> transfers <{total_transfers}>, exceeds the limit <{LIMIT_BY_TRANSFER_COUNT}>."
             )
 
     finally:
         driver.quit()
+        logging.info("Session closed.")
         return transfers
 
 
@@ -186,9 +197,11 @@ def get_rec_transfers(address: str, transfers: List[Transfer], depth=0):
                     depth += 1
                     get_rec_transfers(nt.address_to, transfers, depth)
                 else:
-                    print(f"{nt.address_to} hit MAX_SCAN_DEPTH and won't be included.")
+                    logging.info(
+                        f"{nt.address_to} hit MAX_SCAN_DEPTH <{MAX_SCAN_DEPTH}> and won't be included."
+                    )
             else:
-                print(f"No more new transfer to for {nt.address_to}")
+                logging.info(f"No more new transfers for <{nt.address_to}>.")
 
     return
 
@@ -205,4 +218,7 @@ if __name__ == "__main__":
     )
 
     # save trasfers to csv file
+    logging.info("Saving transfers to file...")
     df.to_csv("transfers.csv")
+
+    logging.info("CSV file created.")
